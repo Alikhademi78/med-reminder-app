@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
-import { Pill, Plus, User, Settings, Bell, Clock, ArrowRight, Sparkles, X, LoaderCircle, RefreshCw, Trash2, AlertTriangle, Save, LogOut, Pencil, Moon, Sun, Languages } from 'lucide-react';
+import { Pill, Plus, User, Settings, Bell, Clock, ArrowRight, Sparkles, X, LoaderCircle, RefreshCw, Trash2, AlertTriangle, Save, LogOut, Pencil, Languages } from 'lucide-react';
 
 // --- I18N (TRANSLATION) SETUP ---
 
@@ -381,7 +381,8 @@ const EditProfilePage = ({ userProfile, onSave, onCancel, setModalInfo }) => {
 };
 
 const ProfilePage = ({ userProfile, setCurrentPage, onLogout }) => {
-    const { t } = useTranslation();
+    const { t, language } = useTranslation();
+    const arrowClass = language === 'fa' ? 'transform rotate-180' : '';
     return (
     <div className="max-w-md mx-auto text-center">
         <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">{t('myProfile')}</h1>
@@ -391,9 +392,9 @@ const ProfilePage = ({ userProfile, setCurrentPage, onLogout }) => {
             <p className="text-gray-500 dark:text-gray-400 mt-2">{t('yourHealthIsOurWish')}</p>
         </div>
         <div className="mt-6 space-y-3">
-            <button onClick={() => setCurrentPage('editProfile')} className="w-full flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-right"><span className="font-semibold text-gray-800 dark:text-gray-200">{t('userInfo')}</span><ArrowRight className="w-5 h-5 text-gray-400"/></button>
-            <a href="#" className="w-full flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"><span className="font-semibold text-gray-800 dark:text-gray-200">{t('medicationReport')}</span><ArrowRight className="w-5 h-5 text-gray-400"/></a>
-            <button onClick={onLogout} className="w-full flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><span className="font-semibold flex items-center"><LogOut className="w-5 h-5 mx-2"/>{t('logout')}</span><ArrowRight className="w-5 h-5 text-red-400"/></button>
+            <button onClick={() => setCurrentPage('editProfile')} className="w-full flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"><span className="font-semibold text-gray-800 dark:text-gray-200">{t('userInfo')}</span><ArrowRight className={`w-5 h-5 text-gray-400 ${arrowClass}`}/></button>
+            <a href="#" className="w-full flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"><span className="font-semibold text-gray-800 dark:text-gray-200">{t('medicationReport')}</span><ArrowRight className={`w-5 h-5 text-gray-400 ${arrowClass}`}/></a>
+            <button onClick={onLogout} className="w-full flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><span className="font-semibold flex items-center"><LogOut className="w-5 h-5 mx-2"/>{t('logout')}</span><ArrowRight className={`w-5 h-5 text-red-400 ${arrowClass}`}/></button>
         </div>
     </div>
 )};
@@ -550,21 +551,13 @@ const DrugFormPage = ({ initialData = {}, onSave, onCancel, pageTitle, saveButto
 
 const BottomNavBar = ({ currentPage, setCurrentPage }) => {
   const { t } = useTranslation();
-  const navItems = [{ id: 'home', icon: Pill, label: t('medications') }, { id: 'add', icon: Plus, label: t('add') }, { id: 'profile', icon: User, label: t('profile') }, { id: 'settings', icon: Settings, label: t('settings') }];
+  const navItems = [{ id: 'home', icon: Pill, label: t('medications') }, { id: 'add', icon: Plus, label: t('add') }, { id: 'profile', icon: User, label: t('myProfile') }, { id: 'settings', icon: Settings, label: t('settings') }];
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 shadow-lg"><div className="flex justify-around max-w-lg mx-auto">{navItems.map(item => (<button key={item.id} onClick={() => setCurrentPage(item.id)} className={`flex flex-col items-center justify-center w-full py-3 text-sm transition-colors duration-200 ${currentPage === item.id ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400'}`}><item.icon className="w-7 h-7 mb-1" /><span>{item.label}</span></button>))}</div></nav>
   );
 };
 
-// --- THEME & APP WRAPPER ---
-const getInitialTheme = () => {
-  if (typeof window !== 'undefined') {
-    const savedTheme = localStorage.getItem('theme'); // User's manual choice takes priority
-    if (savedTheme) return savedTheme;
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
-  }
-  return 'light';
-};
+// --- Main App Logic ---
 
 function App() {
   const { t } = useTranslation();
@@ -572,6 +565,7 @@ function App() {
   const [medications, setMedications] = useState([]);
   const [userProfile, setUserProfile] = useState(null);
   const [isRegistered, setIsRegistered] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Add loading state
   const [notificationEnabled, setNotificationEnabled] = useState(true);
   const [modalInfo, setModalInfo] = useState(null);
   const [askAiModalMed, setAskAiModalMed] = useState(null);
@@ -581,53 +575,55 @@ function App() {
   const [confirmLogout, setConfirmLogout] = useState(false);
   const triggeredAlarms = useRef(new Set());
 
-  // --- THEME MANAGEMENT ---
+  // --- THEME & INITIAL LOAD ---
   useEffect(() => {
-    // This effect ensures the theme is based on OS preference on first load
-    // but does NOT include a manual switcher.
+    // Theme setup based on OS
     const applyTheme = () => {
-        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark')
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
         } else {
-            document.documentElement.classList.remove('dark')
+            document.documentElement.classList.remove('dark');
         }
     }
     applyTheme();
-
-    // Optional: Listen for OS theme changes
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     mediaQuery.addEventListener('change', applyTheme);
-    return () => mediaQuery.removeEventListener('change', applyTheme);
-  }, []);
 
-  // --- DATA PERSISTENCE ---
-  useEffect(() => {
+    // Initial data load
     try {
       const savedMeds = localStorage.getItem('medications');
       setMedications(savedMeds ? JSON.parse(savedMeds) : initialMedications);
-      const savedProfile = localStorage.getItem('userProfile') || sessionStorage.getItem('userProfile');
-      if (savedProfile) {
-        setUserProfile(JSON.parse(savedProfile));
-        setIsRegistered(true);
+
+      const savedProfileJSON = localStorage.getItem('userProfile') || sessionStorage.getItem('userProfile');
+      if (savedProfileJSON) {
+        const profile = JSON.parse(savedProfileJSON);
+        if (profile && typeof profile === 'object') {
+          setUserProfile(profile);
+          setIsRegistered(true);
+        }
       }
     } catch (error) {
-      console.error("Could not read from storage", error);
-      setIsRegistered(false);
-      setMedications(initialMedications);
+      console.error("Could not initialize from storage", error);
+      localStorage.clear(); // Clear potentially corrupted storage
+      sessionStorage.clear();
+    } finally {
+      setIsLoading(false); // Finished loading
     }
+    
+    return () => mediaQuery.removeEventListener('change', applyTheme);
   }, []);
 
+  // --- PERSIST MEDICATIONS ---
   useEffect(() => {
-    try {
-        if(medications && medications.length > 0) {
+    // Avoid saving initial mock data on first load
+    if (!isLoading) {
+        try {
             localStorage.setItem('medications', JSON.stringify(medications));
-        } else if (medications && medications.length === 0) {
-             localStorage.removeItem('medications');
+        } catch (error) {
+            console.error("Could not save medications to storage", error);
         }
-    } catch (error) {
-        console.error("Could not save medications to storage", error);
     }
-  }, [medications]);
+  }, [medications, isLoading]);
 
   // --- HANDLERS ---
   const handleRegistration = (profileData, rememberMe) => {
@@ -643,7 +639,7 @@ function App() {
     storageUsed.setItem('userProfile', JSON.stringify(profileData));
     setUserProfile(profileData);
     setCurrentPage('profile');
-    setModalInfo({ title: t('success'), message: t('medUpdatedSuccess', {name: ''}) }); // Generic success
+    setModalInfo({ title: t('success'), message: t('medUpdatedSuccess', {name: ''}) });
   };
 
   const handleLogout = () => {
@@ -669,7 +665,7 @@ function App() {
   };
 
   const handleEditRequest = (med) => { setEditingMedication(med); setCurrentPage('editMedication'); };
-  const deleteMedication = (id, name) => { 
+  const deleteMedication = (id) => { 
       setMedications(meds => meds.filter(med => med.id !== id)); 
       setConfirmDelete(null); 
       setModalInfo({ title: t('success'), message: t('medDeletedSuccess')}); 
@@ -688,7 +684,7 @@ function App() {
 
   // --- ALARM LOGIC ---
   useEffect(() => {
-    if (!notificationEnabled) return;
+    if (!notificationEnabled || isLoading) return;
     const checkTime = () => {
       const now = new Date(); const currentTime = now.toTimeString().slice(0, 5);
       const upcomingMed = medications.find(med => !med.taken && med.specificTime === currentTime && !triggeredAlarms.current.has(med.id));
@@ -700,20 +696,23 @@ function App() {
     };
     const interval = setInterval(checkTime, 30000);
     return () => clearInterval(interval);
-  }, [medications, notificationEnabled]);
+  }, [medications, notificationEnabled, isLoading]);
 
   const mainAppClasses = "font-sans bg-gray-100 dark:bg-gray-900 min-h-screen text-gray-900 dark:text-gray-100 transition-colors duration-300";
 
-  if (!isRegistered) {
-      return (
-        <div className={mainAppClasses}>
-            {modalInfo && <InfoModal title={modalInfo.title} message={modalInfo.message} onClose={() => setModalInfo(null)} />}
-            <RegistrationPage onRegister={handleRegistration} setModalInfo={setModalInfo} />
+  // --- RENDER LOGIC ---
+  if (isLoading) {
+    return (
+        <div className={`${mainAppClasses} flex items-center justify-center`}>
+            <LoaderCircle className="w-12 h-12 animate-spin text-blue-500" />
         </div>
-      )
+    );
   }
 
   const RenderPage = () => {
+    if (!isRegistered) {
+        return <RegistrationPage onRegister={handleRegistration} setModalInfo={setModalInfo} />;
+    }
     switch (currentPage) {
       case 'add': return <DrugFormPage onSave={addMedication} onCancel={() => setCurrentPage('home')} pageTitle={t('addDrugTitle')} saveButtonText={t('save')} />;
       case 'editMedication': return <DrugFormPage initialData={editingMedication} onSave={updateMedication} onCancel={() => setCurrentPage('home')} pageTitle={t('editDrugTitle')} saveButtonText={t('saveChanges')} />;
@@ -728,11 +727,11 @@ function App() {
     <div className={`${mainAppClasses} flex flex-col`}>
       {modalInfo && <InfoModal title={modalInfo.title} message={modalInfo.message} onClose={() => setModalInfo(null)} />}
       {askAiModalMed && <AskAiModal medication={askAiModalMed} onClose={() => setAskAiModalMed(null)} />}
-      {confirmDelete && <ConfirmationModal title={t('confirmDeleteTitle')} message={t('confirmDeleteMessage', {name: confirmDelete.name})} onConfirm={() => deleteMedication(confirmDelete.id, confirmDelete.name)} onCancel={() => setConfirmDelete(null)} />}
+      {confirmDelete && <ConfirmationModal title={t('confirmDeleteTitle')} message={t('confirmDeleteMessage', {name: confirmDelete.name})} onConfirm={() => deleteMedication(confirmDelete.id)} onCancel={() => setConfirmDelete(null)} />}
       {confirmLogout && <ConfirmationModal title={t('confirmLogoutTitle')} message={t('confirmLogoutMessage')} onConfirm={handleLogout} onCancel={() => setConfirmLogout(false)} confirmText={t('logout')}/>}
       {alarmModalMed && <AlarmModal medication={alarmModalMed} onClose={() => setAlarmModalMed(null)} onTake={toggleMedicationTaken} onSnooze={snoozeMedication} />}
       <main className="flex-grow p-4 pb-24"><RenderPage /></main>
-      <BottomNavBar currentPage={currentPage} setCurrentPage={setCurrentPage} />
+      {isRegistered && <BottomNavBar currentPage={currentPage} setCurrentPage={setCurrentPage} />}
     </div>
   );
 }
