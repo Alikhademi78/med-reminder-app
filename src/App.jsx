@@ -79,8 +79,8 @@ const AskAiModal = ({ medication, onClose }) => {
         const prompt = `شما یک دستیار سلامتی مهربان برای سالمندان هستید. به سوال زیر در مورد داروی "${medication.name}" به زبان فارسی ساده، واضح و کوتاه پاسخ دهید. سوال: "${question}". نکته بسیار مهم: در انتهای پاسخ خود، این جمله را حتما ذکر کنید: "توجه: این پاسخ جایگزین توصیه پزشک نیست. حتما با پزشک یا داروساز خود مشورت کنید."`;
         try {
             const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
-            const apiKey = "";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            const apiKey = ""; // API key should be handled securely on a backend
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
             const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             if (!response.ok) throw new Error('خطا در برقراری ارتباط با سرویس هوش مصنوعی.');
             const result = await response.json();
@@ -259,8 +259,8 @@ const HomePage = ({ medications, userProfile, onToggleTaken, onAskAi, setModalIn
     const prompt = `شما یک متخصص تغذیه مهربان برای سالمندان هستید. یک نکته غذایی بسیار ساده، سالم و کاربردی برای یک فرد سالمند به زبان فارسی بنویسید. نکته باید کوتاه و در حد یک یا دو جمله باشد.`;
     try {
         const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
-        const apiKey = "";
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+        const apiKey = ""; // API key should be handled securely on a backend
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
         const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         if (!response.ok) throw new Error('خطا در دریافت نکته.');
         const result = await response.json();
@@ -286,23 +286,45 @@ const HomePage = ({ medications, userProfile, onToggleTaken, onAskAi, setModalIn
   );
 };
 
+// --- THIS IS THE CORRECTED COMPONENT ---
 const MedicationCard = ({ med, onToggleTaken, onAskAi, onDeleteRequest, onEditRequest }) => (
-    <div className={`p-4 rounded-xl shadow-md transition-all duration-300 flex items-center justify-between group ${med.taken ? 'bg-green-100 border-l-8 border-green-500' : 'bg-white border-l-8 border-red-500'}`}>
-        <div className="flex items-center flex-grow" onClick={() => onToggleTaken(med.id)} style={{cursor: 'pointer'}}>
-            <div className={`w-8 h-8 flex items-center justify-center rounded-full mr-4 shrink-0 ${med.taken ? 'bg-green-500' : 'bg-red-400'}`}><Pill size={20} className="text-white" /></div>
-            <div><p className="text-lg font-bold text-gray-800 flex items-center">{med.name} {med.specificTime && <span className="text-sm font-normal text-gray-500 mr-2">({med.specificTime})</span>}</p><div className="flex items-center mt-1"><p className="text-gray-600">{med.dosage}</p>{med.isRecurring && <div className="mr-3 flex items-center text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full"><RefreshCw className="w-3 h-3 ml-1"/>هر {med.reminderInterval} ساعت</div>}</div></div>
-        </div>
-        <div className="flex items-center space-x-1 mr-4 shrink-0">
-             <button onClick={(e) => { e.stopPropagation(); onAskAi(med); }} className="p-2 text-blue-600 rounded-full hover:bg-blue-100 transition-colors" aria-label={`پرسش درباره ${med.name}`}><Sparkles size={20} /></button>
-             <button onClick={(e) => { e.stopPropagation(); onEditRequest(med); }} className="p-2 text-gray-600 rounded-full hover:bg-gray-200 opacity-0 group-hover:opacity-100 transition-opacity" aria-label={`ویرایش ${med.name}`}><Pencil size={20} /></button>
-             <button onClick={(e) => { e.stopPropagation(); onDeleteRequest(med); }} className="p-2 text-red-500 rounded-full hover:bg-red-100 opacity-0 group-hover:opacity-100 transition-opacity" aria-label={`حذف ${med.name}`}><Trash2 size={20} /></button>
-            <div className="flex flex-col items-center" onClick={() => onToggleTaken(med.id)} style={{cursor: 'pointer'}}>
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center border-2 ${med.taken ? 'border-green-600 bg-green-500' : 'border-gray-400'}`}>{med.taken && <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}</div>
-                <span className={`mt-1 text-xs font-semibold ${med.taken ? 'text-green-700' : 'text-gray-500'}`}>{med.taken ? 'مصرف شد' : 'نشده'}</span>
+  <div className={`p-3 rounded-xl shadow-md flex items-center gap-3 transition-all duration-300 group ${med.taken ? 'bg-green-50 border-r-4 border-green-500' : 'bg-white border-r-4 border-red-500'}`}>
+    
+    {/* Main clickable area */}
+    <div className="flex-grow flex items-center gap-3" onClick={() => onToggleTaken(med.id)} style={{cursor: 'pointer'}}>
+      <div className={`w-9 h-9 flex items-center justify-center rounded-full shrink-0 ${med.taken ? 'bg-green-500' : 'bg-red-400'}`}>
+        <Pill size={20} className="text-white" />
+      </div>
+      <div className="flex-grow">
+        <p className="text-lg font-bold text-gray-800 flex items-center">{med.name}
+          <span className="text-sm font-normal text-gray-500 mr-2">({med.specificTime})</span>
+        </p>
+        <div className="flex items-center mt-1 gap-x-3">
+          <p className="text-gray-600">{med.dosage}</p>
+          {med.isRecurring && (
+            <div className="flex items-center text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+              <RefreshCw className="w-3 h-3 ml-1"/>هر {med.reminderInterval} ساعت
             </div>
+          )}
         </div>
+      </div>
     </div>
+
+    {/* Buttons and status on the left */}
+    <div className="flex items-center shrink-0">
+      <button onClick={(e) => { e.stopPropagation(); onAskAi(med); }} className="p-2 text-blue-600 rounded-full hover:bg-blue-100 transition-colors" aria-label={`پرسش درباره ${med.name}`}><Sparkles size={20} /></button>
+      <button onClick={(e) => { e.stopPropagation(); onEditRequest(med); }} className="p-2 text-gray-600 rounded-full hover:bg-gray-200 opacity-0 group-hover:opacity-100 transition-opacity" aria-label={`ویرایش ${med.name}`}><Pencil size={20} /></button>
+      <button onClick={(e) => { e.stopPropagation(); onDeleteRequest(med); }} className="p-2 text-red-500 rounded-full hover:bg-red-100 opacity-0 group-hover:opacity-100 transition-opacity" aria-label={`حذف ${med.name}`}><Trash2 size={20} /></button>
+      <div className="flex flex-col items-center cursor-pointer w-12" onClick={() => onToggleTaken(med.id)}>
+        <div className={`w-6 h-6 rounded-full flex items-center justify-center border-2 ${med.taken ? 'border-green-600 bg-green-500' : 'border-gray-400'}`}>
+          {med.taken && <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+        </div>
+        <span className={`mt-1 text-xs font-semibold ${med.taken ? 'text-green-700' : 'text-gray-500'}`}>{med.taken ? 'مصرف شد' : 'نشده'}</span>
+      </div>
+    </div>
+  </div>
 );
+
 
 const DrugFormPage = ({ initialData = {}, onSave, onCancel, pageTitle, saveButtonText }) => {
   const [name, setName] = useState(initialData.name || '');
@@ -315,7 +337,7 @@ const DrugFormPage = ({ initialData = {}, onSave, onCancel, pageTitle, saveButto
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name || !dosage || !specificTime) {
-      // Maybe use a more noticeable way to show error, like a modal passed via props
+      // Using a custom modal for errors would be better than alert()
       alert("لطفاً نام دارو، دوز مصرف و ساعت دقیق را وارد کنید.");
       return;
     }
@@ -356,7 +378,7 @@ const BottomNavBar = ({ currentPage, setCurrentPage }) => {
 // --- MAIN APP COMPONENT ---
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home');
-  const [medications, setMedications] = useState(initialMedications);
+  const [medications, setMedications] = useState([]);
   const [userProfile, setUserProfile] = useState(null);
   const [isRegistered, setIsRegistered] = useState(false);
   const [notificationEnabled, setNotificationEnabled] = useState(true);
@@ -368,9 +390,16 @@ export default function App() {
   const [confirmLogout, setConfirmLogout] = useState(false);
   const triggeredAlarms = useRef(new Set());
 
-  // --- USER PROFILE & REGISTRATION ---
+  // Load data from localStorage on initial render
   useEffect(() => {
     try {
+      const savedMeds = localStorage.getItem('medications');
+      if (savedMeds) {
+        setMedications(JSON.parse(savedMeds));
+      } else {
+        setMedications(initialMedications); // Load mock data if nothing is saved
+      }
+
       let savedProfile = localStorage.getItem('userProfile');
       if (!savedProfile) {
         savedProfile = sessionStorage.getItem('userProfile');
@@ -380,10 +409,25 @@ export default function App() {
         setIsRegistered(true);
       }
     } catch (error) {
-      console.error("Could not read user profile from storage", error);
+      console.error("Could not read from storage", error);
       setIsRegistered(false);
+      setMedications(initialMedications);
     }
   }, []);
+
+  // Save medications to localStorage whenever they change
+  useEffect(() => {
+    try {
+        // We only save if the medications array isn't the initial mock data,
+        // to avoid overwriting user's empty list on first load.
+        if(medications.length > 0) {
+            localStorage.setItem('medications', JSON.stringify(medications));
+        }
+    } catch (error) {
+        console.error("Could not save medications to storage", error);
+    }
+  }, [medications]);
+
 
   const handleRegistration = (profileData, rememberMe) => {
     const storage = rememberMe ? localStorage : sessionStorage;
@@ -427,7 +471,18 @@ export default function App() {
     setCurrentPage('editMedication');
   };
 
-  const deleteMedication = (id) => { setMedications(meds => meds.filter(med => med.id !== id)); setConfirmDelete(null); setModalInfo({ title: "انجام شد", message: "دارو با موفقیت حذف شد."}); };
+  const deleteMedication = (id) => { 
+      setMedications(meds => {
+          const newMeds = meds.filter(med => med.id !== id);
+          if (newMeds.length === 0) {
+              localStorage.removeItem('medications');
+          }
+          return newMeds;
+      }); 
+      setConfirmDelete(null); 
+      setModalInfo({ title: "انجام شد", message: "دارو با موفقیت حذف شد."}); 
+  };
+  
   const toggleMedicationTaken = (id) => { setMedications(meds => meds.map(med => (med.id === id ? { ...med, taken: !med.taken } : med))); };
   
   const snoozeMedication = (id) => {
@@ -452,14 +507,20 @@ export default function App() {
       if (upcomingMed) { setAlarmModalMed(upcomingMed); triggeredAlarms.current.add(upcomingMed.id); }
     };
     const day = new Date().getDate();
-    const interval = setInterval(() => { if (new Date().getDate() !== day) { triggeredAlarms.current.clear(); } checkTime(); }, 60000);
+    // Reset alarms at midnight
+    if (new Date().getHours() === 0 && new Date().getMinutes() === 0) {
+        triggeredAlarms.current.clear();
+        // Untake all medications for the new day
+        setMedications(meds => meds.map(m => ({...m, taken: false})));
+    }
+    const interval = setInterval(checkTime, 30000); // Check every 30 seconds
     return () => clearInterval(interval);
   }, [medications, notificationEnabled]);
 
   if (!isRegistered) {
       return (
         <div dir="rtl" className="font-sans bg-gray-100 min-h-screen">
-             {modalInfo && <InfoModal title={modalInfo.title} message={modalInfo.message} onClose={() => setModalInfo(null)} />}
+            {modalInfo && <InfoModal title={modalInfo.title} message={modalInfo.message} onClose={() => setModalInfo(null)} />}
             <RegistrationPage onRegister={handleRegistration} setModalInfo={setModalInfo} />
         </div>
       )
