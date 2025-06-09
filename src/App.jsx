@@ -389,6 +389,24 @@ const BottomNavBar = ({ currentPage, setCurrentPage }) => {
   );
 };
 
+// --- Function to determine the initial theme ---
+const getInitialTheme = () => {
+  if (typeof window !== 'undefined') {
+    // 1. Check for a saved theme in localStorage
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+      return savedTheme;
+    }
+    // 2. Check for the user's OS preference
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+  }
+  // 3. Default to light theme
+  return 'light';
+};
+
+
 // --- MAIN APP COMPONENT ---
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home');
@@ -402,23 +420,18 @@ export default function App() {
   const [editingMedication, setEditingMedication] = useState(null);
   const [alarmModalMed, setAlarmModalMed] = useState(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
-  const [theme, setTheme] = useState('light'); // 'light' or 'dark'
+  const [theme, setTheme] = useState(getInitialTheme); // 'light' or 'dark'
   const triggeredAlarms = useRef(new Set());
 
   // --- THEME MANAGEMENT ---
-  // Load theme from localStorage on initial render
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    setTheme(savedTheme);
-  }, []);
-
-  // Apply theme class to root element and save to localStorage
+  // Apply theme class to the root element and save choice to localStorage
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
+    // We save the theme to localStorage on every change to persist the user's choice.
     localStorage.setItem('theme', theme);
   }, [theme]);
 
