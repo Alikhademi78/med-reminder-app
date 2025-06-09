@@ -232,7 +232,7 @@ const ProfilePage = ({ userProfile, setCurrentPage, onLogout }) => (
     </div>
 );
 
-const SettingsPage = ({ notificationEnabled, setNotificationEnabled, theme, setTheme }) => (
+const SettingsPage = ({ notificationEnabled, setNotificationEnabled }) => (
     <div className="max-w-md mx-auto">
         <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-8">تنظیمات</h1>
         <div className="space-y-4">
@@ -245,20 +245,6 @@ const SettingsPage = ({ notificationEnabled, setNotificationEnabled, theme, setT
                     </label>
                 </div>
                 <p className="text-gray-500 dark:text-gray-400 mt-2 pr-10 text-sm">با فعال کردن این گزینه، زمان مصرف داروها به شما یادآوری می‌شود.</p>
-            </div>
-            {/* --- Theme Toggle UI --- */}
-            <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-md">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                        {theme === 'light' ? <Sun className="w-7 h-7 text-amber-500 ml-3"/> : <Moon className="w-7 h-7 text-indigo-400 ml-3"/>}
-                        <span className="text-lg font-semibold text-gray-700 dark:text-gray-200">حالت نمایش</span>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" checked={theme === 'dark'} onChange={() => setTheme(theme === 'light' ? 'dark' : 'light')} className="sr-only peer" />
-                        <div className="w-14 h-8 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-1 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600"></div>
-                    </label>
-                </div>
-                <p className="text-gray-500 dark:text-gray-400 mt-2 pr-10 text-sm">بین حالت روشن و تاریک جابجا شوید.</p>
             </div>
         </div>
     </div>
@@ -420,18 +406,19 @@ export default function App() {
   const [editingMedication, setEditingMedication] = useState(null);
   const [alarmModalMed, setAlarmModalMed] = useState(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
-  const [theme, setTheme] = useState(getInitialTheme); // 'light' or 'dark'
+  const [theme, setTheme] = useState(getInitialTheme);
   const triggeredAlarms = useRef(new Set());
 
   // --- THEME MANAGEMENT ---
-  // Apply theme class to the root element and save choice to localStorage
+  // Apply theme class to the root element. It runs once on load based on system preference.
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
-    // We save the theme to localStorage on every change to persist the user's choice.
+    // Persist the initial theme to localStorage so it's remembered,
+    // even though there's no UI to change it anymore.
     localStorage.setItem('theme', theme);
   }, [theme]);
 
@@ -590,7 +577,7 @@ export default function App() {
         />;
       case 'profile': return <ProfilePage userProfile={userProfile} setCurrentPage={setCurrentPage} onLogout={() => setConfirmLogout(true)} />;
       case 'editProfile': return <EditProfilePage userProfile={userProfile} onSave={handleProfileUpdate} onCancel={() => setCurrentPage('profile')} setModalInfo={setModalInfo} />;
-      case 'settings': return <SettingsPage notificationEnabled={notificationEnabled} setNotificationEnabled={setNotificationEnabled} theme={theme} setTheme={setTheme} />;
+      case 'settings': return <SettingsPage notificationEnabled={notificationEnabled} setNotificationEnabled={setNotificationEnabled} />;
       default: return <HomePage medications={medications} userProfile={userProfile} onToggleTaken={toggleMedicationTaken} onAskAi={setAskAiModalMed} setModalInfo={setModalInfo} onDeleteRequest={setConfirmDelete} onEditRequest={handleEditRequest} />;
     }
   };
