@@ -9,6 +9,10 @@ const initialMedications = [
   { id: 4, name: 'امگا 3', dosage: '1 عدد', time: 'شب', specificTime: '21:00', isRecurring: false, reminderInterval: null, taken: false },
 ];
 
+// --- A simple, client-side list of valid license codes ---
+const validLicenses = ['Seniors-2024-VIP', 'Health-First-123', 'MedApp-Pro-456'];
+
+
 // --- HELPER FUNCTIONS ---
 const getTimeGreeting = () => {
     const hour = new Date().getHours();
@@ -153,8 +157,21 @@ const RegistrationPage = ({ onRegister, setModalInfo }) => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
+
+        // License Code Validation
+        if (!licenseCode) {
+            setModalInfo({ title: "خطای اعتبارسنجی", message: "لطفاً کد لایسنس خود را وارد کنید. این کد برای فعال‌سازی برنامه ضروری است." });
+            return;
+        }
+
+        if (!validLicenses.includes(licenseCode.trim())) {
+            setModalInfo({ title: "لایسنس نامعتبر", message: "کد لایسنس وارد شده صحیح نیست. لطفاً مجدداً تلاش کنید یا با پشتیبانی تماس بگیرید." });
+            return;
+        }
+
+        // Other fields validation
         if (!firstName || !lastName || !mobile) {
-            setModalInfo({ title: "خطا", message: "لطفا نام، نام خانوادگی و شماره موبایل را وارد کنید."});
+            setModalInfo({ title: "اطلاعات ناقص", message: "لطفا نام، نام خانوادگی و شماره موبایل را وارد کنید."});
             return;
         }
         onRegister({ firstName, lastName, mobile, licenseCode }, rememberMe);
@@ -168,10 +185,11 @@ const RegistrationPage = ({ onRegister, setModalInfo }) => {
                 <p className="text-gray-600 dark:text-gray-400 mt-2">برای شروع، لطفا اطلاعات خود را وارد کنید.</p>
             </div>
             <form onSubmit={handleSubmit} className="space-y-5 bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
+                <div><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">کد لایسنس</label><input type="text" value={licenseCode} onChange={e => setLicenseCode(e.target.value)} className="w-full p-4 text-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" placeholder="کد فعال‌سازی خود را وارد کنید" /></div>
+                <hr className="dark:border-gray-600" />
                 <div><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">نام</label><input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} className="w-full p-4 text-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" /></div>
                 <div><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">نام خانوادگی</label><input type="text" value={lastName} onChange={e => setLastName(e.target.value)} className="w-full p-4 text-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" /></div>
                 <div><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">شماره موبایل</label><input type="tel" value={mobile} onChange={e => setMobile(e.target.value)} className="w-full p-4 text-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" /></div>
-                <div><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">کد لایسنس (اختیاری)</label><input type="text" value={licenseCode} onChange={e => setLicenseCode(e.target.value)} className="w-full p-4 text-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" /></div>
                  <div className="flex items-center">
                     <input id="remember-me" type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="h-5 w-5 text-blue-600 border-gray-300 dark:border-gray-500 rounded focus:ring-blue-500 bg-gray-50 dark:bg-gray-700" />
                     <label htmlFor="remember-me" className="mr-2 block text-md text-gray-700 dark:text-gray-300">مرا به خاطر بسپار</label>
