@@ -1,614 +1,386 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Pill, Plus, User, Settings, Bell, Clock, ArrowRight, Sparkles, X, LoaderCircle, RefreshCw, Trash2, AlertTriangle, Save, LogOut, Pencil, Moon, Sun } from 'lucide-react';
-
-// Mock data for initial medications
-const initialMedications = [
-  { id: 1, name: 'ویتامین D', dosage: '1 عدد', time: 'صبح', specificTime: '08:00', isRecurring: false, reminderInterval: null, taken: true },
-  { id: 2, name: 'آسپرین', dosage: 'نصف قرص', time: 'صبح', specificTime: '08:30', isRecurring: false, reminderInterval: null, taken: false },
-  { id: 3, name: 'آنتی‌بیوتیک', dosage: '1 عدد', time: 'ظهر', specificTime: '14:00', isRecurring: true, reminderInterval: 8, taken: false },
-  { id: 4, name: 'امگا 3', dosage: '1 عدد', time: 'شب', specificTime: '21:00', isRecurring: false, reminderInterval: null, taken: false },
-];
-
-// --- A simple, client-side list of valid license codes ---
-const validLicenses = ['Seniors-2024-VIP', 'Health-First-123', 'MedApp-Pro-456'];
-
-
-// --- HELPER FUNCTIONS ---
-const getTimeGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'صبح بخیر';
-    if (hour < 18) return 'ظهر بخیر';
-    return 'عصر بخیر';
-};
-
-// --- AUDIO COMPONENT FOR ALARM ---
-const AlarmSound = {
-  audioContext: null,
-  oscillator: null,
-  gainNode: null,
-  isPlaying: false,
-  setup() {
-    if (typeof window !== 'undefined' && !this.audioContext) {
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    }
-  },
-  play() {
-    this.setup();
-    if (!this.audioContext || this.isPlaying) return;
-    this.isPlaying = true;
-    this.oscillator = this.audioContext.createOscillator();
-    this.gainNode = this.audioContext.createGain();
-    this.oscillator.connect(this.gainNode);
-    this.gainNode.connect(this.audioContext.destination);
-    this.oscillator.type = 'sine';
-    this.oscillator.frequency.setValueAtTime(880, this.audioContext.currentTime);
-    this.gainNode.gain.setValueAtTime(0.5, this.audioContext.currentTime);
-    this.gainNode.gain.exponentialRampToValueAtTime(0.0001, this.audioContext.currentTime + 1);
-    this.oscillator.start();
-    this.oscillator.onended = () => {
-      this.isPlaying = false;
-      if (this.oscillator) this.oscillator.disconnect();
-      if (this.gainNode) this.gainNode.disconnect();
-    };
-    this.oscillator.stop(this.audioContext.currentTime + 1);
-  },
-  stop() {
-    if (this.oscillator) {
-      this.oscillator.stop();
-    }
-  }
-};
-
-
-// --- MODAL COMPONENTS ---
-
-const InfoModal = ({ title, message, onClose }) => (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4" dir="rtl">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-sm w-full">
-            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-3">{title}</h3>
-            <p className="text-gray-600 dark:text-gray-300 mb-6" style={{ whiteSpace: 'pre-wrap' }}>{message}</p>
-            <button onClick={onClose} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-transform transform active:scale-95">فهمیدم</button>
-        </div>
-    </div>
-);
-
-const AskAiModal = ({ medication, onClose }) => {
-    const [question, setQuestion] = useState('');
-    const [answer, setAnswer] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-    const handleAskGemini = async () => {
-        if (!question) { setError('لطفاً سوال خود را وارد کنید.'); return; }
-        setIsLoading(true); setError(''); setAnswer('');
-        const prompt = `شما یک دستیار سلامتی مهربان برای سالمندان هستید. به سوال زیر در مورد داروی "${medication.name}" به زبان فارسی ساده، واضح و کوتاه پاسخ دهید. سوال: "${question}". نکته بسیار مهم: در انتهای پاسخ خود، این جمله را حتما ذکر کنید: "توجه: این پاسخ جایگزین توصیه پزشک نیست. حتما با پزشک یا داروساز خود مشورت کنید."`;
-        try {
-            const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
-            const apiKey = ""; // API key should be handled securely on a backend
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            if (!response.ok) throw new Error('خطا در برقراری ارتباط با سرویس هوش مصنوعی.');
-            const result = await response.json();
-            if (result.candidates && result.candidates[0]?.content?.parts[0]?.text) { setAnswer(result.candidates[0].content.parts[0].text); } else { throw new Error('پاسخی دریافت نشد. لطفا دوباره تلاش کنید.'); }
-        } catch (e) { setError(e.message || 'یک خطای پیش‌بینی نشده رخ داد.'); } finally { setIsLoading(false); }
-    };
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 p-4" onClick={onClose}>
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl shadow-2xl p-6 max-w-lg w-full transform transition-all" onClick={e => e.stopPropagation()} dir="rtl">
-                <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center"><Sparkles className="w-6 h-6 text-yellow-500 ml-2" />پرسش در مورد {medication.name}</h3><button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X size={28} /></button></div>
-                <div className="space-y-4"><textarea value={question} onChange={(e) => setQuestion(e.target.value)} className="w-full p-3 text-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" rows="3" placeholder="سوال خود را اینجا بنویسید... مثلا: عوارض این دارو چیست؟" /><button onClick={handleAskGemini} disabled={isLoading} className="w-full bg-blue-600 text-white text-lg font-bold py-3 rounded-xl hover:bg-blue-700 flex items-center justify-center disabled:bg-blue-300 transition-transform transform active:scale-95">{isLoading ? <LoaderCircle className="animate-spin w-6 h-6" /> : '✨ دریافت پاسخ از هوش مصنوعی'}</button></div>
-                {error && <p className="text-red-600 mt-4 text-center">{error}</p>}
-                {answer && <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/50 border-r-4 border-blue-400 rounded-lg"><p className="text-gray-700 dark:text-gray-200 whitespace-pre-wrap">{answer}</p></div>}
-            </div>
-        </div>
-    );
-};
-
-const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = "حذف" }) => (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4" dir="rtl">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-sm w-full">
-            <div className="flex items-center mb-4"><AlertTriangle className="w-8 h-8 text-red-500 ml-3"/><h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h3></div>
-            <p className="text-gray-600 dark:text-gray-300 mb-6">{message}</p>
-            <div className="flex justify-end gap-3">
-                <button onClick={onCancel} className="bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-100 font-bold py-2 px-6 rounded-xl hover:bg-gray-300 dark:hover:bg-gray-500 transition-transform transform active:scale-95">لغو</button>
-                <button onClick={onConfirm} className="bg-red-600 text-white font-bold py-2 px-6 rounded-xl hover:bg-red-700 transition-transform transform active:scale-95">{confirmText}</button>
-            </div>
-        </div>
-    </div>
-);
-
-
-const AlarmModal = ({ medication, onSnooze, onTake, onClose }) => {
-    useEffect(() => {
-        const interval = setInterval(() => AlarmSound.play(), 1200);
-        return () => {
-            clearInterval(interval);
-            AlarmSound.stop();
-        };
-    }, []);
-    const handleTake = () => { onTake(medication.id); onClose(); };
-    const handleSnooze = () => { onSnooze(medication.id); onClose(); };
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-[100] p-4" dir="rtl">
-            <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center border-t-8 border-blue-500">
-                <Bell className="w-20 h-20 text-blue-500 mx-auto animate-bounce"/>
-                <h3 className="text-3xl font-extrabold text-gray-800 dark:text-gray-100 mt-4 mb-2">وقت دارو!</h3>
-                <p className="text-lg text-gray-600 dark:text-gray-300 mb-2">زمان مصرف داروی زیر فرا رسیده است:</p>
-                <div className="bg-blue-50 dark:bg-blue-900/50 p-4 rounded-xl my-6">
-                    <p className="text-2xl font-bold text-blue-800 dark:text-blue-200">{medication.name}</p>
-                    <p className="text-lg text-blue-600 dark:text-blue-300 mt-1">{medication.dosage}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                    <button onClick={handleSnooze} className="w-full bg-amber-500 text-white font-bold py-3 rounded-xl hover:bg-amber-600 transition-transform transform active:scale-95">۵ دقیقه دیگر</button>
-                    <button onClick={handleTake} className="w-full bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700 transition-transform transform active:scale-95">مصرف کردم</button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- USER & PAGE COMPONENTS ---
-
-const RegistrationPage = ({ onRegister, setModalInfo }) => {
-    const [firstName, setFirstName] = useState('');
-    const [lastName, setLastName] = useState('');
-    const [mobile, setMobile] = useState('');
-    const [licenseCode, setLicenseCode] = useState('');
-    const [rememberMe, setRememberMe] = useState(true);
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-
-        // License Code Validation
-        if (!licenseCode) {
-            setModalInfo({ title: "خطای اعتبارسنجی", message: "لطفاً کد لایسنس خود را وارد کنید. این کد برای فعال‌سازی برنامه ضروری است." });
-            return;
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ecut Case - معرفی نسل جدید هارد کیس</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-bg: #0A192F; /* Navy Blue */
+            --color-text: #ccd6f6;
+            --color-text-secondary: #8892b0;
+            --color-accent: #FF5722; /* Deep Orange */
+            --color-card-bg: #112240;
         }
 
-        if (!validLicenses.includes(licenseCode.trim())) {
-            setModalInfo({ title: "لایسنس نامعتبر", message: "کد لایسنس وارد شده صحیح نیست. لطفاً مجدداً تلاش کنید یا با پشتیبانی تماس بگیرید." });
-            return;
+        html {
+            scroll-behavior: smooth;
         }
 
-        // Other fields validation
-        if (!firstName || !lastName || !mobile) {
-            setModalInfo({ title: "اطلاعات ناقص", message: "لطفا نام، نام خانوادگی و شماره موبایل را وارد کنید."});
-            return;
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            overflow-x: hidden;
         }
-        onRegister({ firstName, lastName, mobile, licenseCode }, rememberMe);
-    };
+        
+        #animated-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
 
-    return (
-        <div className="max-w-md mx-auto p-4 pt-10">
-            <div className="text-center mb-8">
-                <Pill className="mx-auto text-blue-500 w-16 h-16" />
-                <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mt-4">به یادآور دارو خوش آمدید</h1>
-                <p className="text-gray-600 dark:text-gray-400 mt-2">برای شروع، لطفا اطلاعات خود را وارد کنید.</p>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-5 bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
-                <div><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">کد لایسنس</label><input type="text" value={licenseCode} onChange={e => setLicenseCode(e.target.value)} className="w-full p-4 text-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" placeholder="کد فعال‌سازی خود را وارد کنید" /></div>
-                <hr className="dark:border-gray-600" />
-                <div><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">نام</label><input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} className="w-full p-4 text-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" /></div>
-                <div><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">نام خانوادگی</label><input type="text" value={lastName} onChange={e => setLastName(e.target.value)} className="w-full p-4 text-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" /></div>
-                <div><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">شماره موبایل</label><input type="tel" value={mobile} onChange={e => setMobile(e.target.value)} className="w-full p-4 text-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" /></div>
-                 <div className="flex items-center">
-                    <input id="remember-me" type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="h-5 w-5 text-blue-600 border-gray-300 dark:border-gray-500 rounded focus:ring-blue-500 bg-gray-50 dark:bg-gray-700" />
-                    <label htmlFor="remember-me" className="mr-2 block text-md text-gray-700 dark:text-gray-300">مرا به خاطر بسپار</label>
-                </div>
-                <button type="submit" className="w-full bg-blue-600 text-white text-xl font-bold py-4 rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-transform transform active:scale-95">ثبت نام و شروع</button>
-            </form>
+        .section {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            padding: 8rem 2rem;
+            overflow: hidden;
+        }
+        
+        /* Definitive fade effect using ::before and ::after */
+        .section::before, .section::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            z-index: 2;
+            pointer-events: none;
+            height: 350px; /* Increased height for a softer blend */
+        }
+        
+        .section::before {
+            top: 0;
+            background: linear-gradient(to bottom, var(--color-bg) 20%, transparent 100%);
+        }
+
+        .section::after {
+            bottom: 0;
+            background: linear-gradient(to top, var(--color-bg) 20%, transparent 100%);
+        }
+        
+        /* Remove fades where not needed */
+        #hero-section::before,
+        #purchase::after {
+            display: none;
+        }
+
+        .section-content {
+            max-width: 980px;
+            margin: 0 auto;
+            text-align: center;
+            position: relative;
+            z-index: 3;
+        }
+
+        .headline {
+            font-size: clamp(2.5rem, 5vw, 4.5rem);
+            font-weight: 900;
+            line-height: 1.1;
+            letter-spacing: -0.015em;
+            color: var(--color-text);
+        }
+
+        .sub-headline {
+            font-size: clamp(1.25rem, 2.5vw, 2rem);
+            font-weight: 700;
+            color: var(--color-text-secondary);
+        }
+        
+        .body-text {
+            font-size: clamp(1rem, 1.8vw, 1.3rem);
+            line-height: 1.6;
+            color: var(--color-text-secondary);
+            max-width: 600px;
+            margin: 1rem auto 0;
+        }
+
+        .cta-button {
+            background-color: var(--color-accent);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 9999px;
+            font-weight: 700;
+            font-size: 1.1rem;
+            display: inline-block;
+            margin-top: 2rem;
+            transition: transform 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease;
+            box-shadow: 0 0 20px rgba(255, 87, 34, 0.4);
+        }
+        .cta-button:hover {
+            background-color: #f4511e;
+            transform: scale(1.05) translateY(-2px);
+            box-shadow: 0 0 30px rgba(255, 87, 34, 0.6);
+        }
+        
+        .bg-image {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 1.2s cubic-bezier(0.165, 0.84, 0.44, 1);
+        }
+        
+        /* Scroll-triggered animations */
+        .reveal {
+            opacity: 0;
+            transform: translateY(50px);
+            transition: opacity 1.2s cubic-bezier(0.165, 0.84, 0.44, 1), transform 1.2s cubic-bezier(0.165, 0.84, 0.44, 1);
+        }
+        
+        .reveal-fast {
+             transition-delay: 0.2s;
+        }
+        .reveal-slow {
+             transition-delay: 0.4s;
+        }
+
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .glowing-image {
+             transition: box-shadow 0.5s ease, transform 0.3s ease;
+             -webkit-filter: drop-shadow(0 0 35px rgba(255, 87, 34, 0.3));
+             filter: drop-shadow(0 0 35px rgba(255, 87, 34, 0.3));
+        }
+        .glowing-image:hover {
+             transform: scale(1.03);
+            -webkit-filter: drop-shadow(0 0 45px rgba(255, 87, 34, 0.5));
+             filter: drop-shadow(0 0 45px rgba(255, 87, 34, 0.5));
+        }
+
+    </style>
+</head>
+<body>
+    <canvas id="animated-bg"></canvas>
+
+    <!-- Section 1: Hero -->
+    <section class="section" id="hero-section">
+        <div class="bg-image" id="hero-bg-image">
+             <img src="https://uploadkon.ir/uploads/e0d810_25Gemini-Generated-Image-wk5n9awk5n9awk5n.jpg" alt="[کیس گیتار در یک محیط سینمایی و تاریک]" class="bg-image opacity-50">
         </div>
-    );
-};
-
-const EditProfilePage = ({ userProfile, onSave, onCancel, setModalInfo }) => {
-    const [profile, setProfile] = useState(userProfile);
+        <div class="section-content relative z-10 reveal">
+            <h1 class="headline">Ecut Case</h1>
+            <h2 class="sub-headline mt-4">همراهی مطمئن در مسیر هنر.</h2>
+            <a href="#purchase" class="cta-button">سفارش دهید</a>
+        </div>
+    </section>
     
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setProfile(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (!profile.firstName || !profile.lastName || !profile.mobile) {
-            setModalInfo({ title: "خطا", message: "لطفا تمام فیلدهای اجباری را پر کنید."});
-            return;
-        }
-        onSave(profile);
-    };
-
-    return (
-        <div className="max-w-md mx-auto">
-            <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">ویرایش اطلاعات کاربری</h1>
-            <form onSubmit={handleSubmit} className="space-y-6 bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
-                <div><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">نام</label><input type="text" name="firstName" value={profile.firstName} onChange={handleChange} className="w-full p-4 text-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" /></div>
-                <div><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">نام خانوادگی</label><input type="text" name="lastName" value={profile.lastName} onChange={handleChange} className="w-full p-4 text-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" /></div>
-                <div><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">شماره موبایل</label><input type="tel" name="mobile" value={profile.mobile} onChange={handleChange} className="w-full p-4 text-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" /></div>
-                <div><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">کد لایسنس</label><input type="text" name="licenseCode" value={profile.licenseCode} readOnly className="w-full p-4 text-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 rounded-xl" /></div>
-                <div className="flex gap-4 pt-2">
-                    <button type="button" onClick={onCancel} className="w-full bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-100 text-xl font-bold py-4 rounded-xl hover:bg-gray-300 dark:hover:bg-gray-500 transition-transform transform active:scale-95">لغو</button>
-                    <button type="submit" className="w-full bg-green-600 text-white text-xl font-bold py-4 rounded-xl hover:bg-green-700 focus:outline-none focus:ring-4 focus:ring-green-300 transition-transform transform active:scale-95 flex items-center justify-center"><Save className="ml-2"/>ذخیره</button>
-                </div>
-            </form>
+    <!-- Section 2: Intro Text -->
+    <section class="section" id="intro-section">
+        <div class="bg-image opacity-20" id="intro-bg-image">
+             <img src="https://uploadkon.ir/uploads/686a10_25شاسی-های-تمام-چوب.jpg" alt="[تصویری از چوب خام و ابزار کار]" class="bg-image">
         </div>
-    );
-};
-
-const ProfilePage = ({ userProfile, setCurrentPage, onLogout }) => (
-    <div className="max-w-md mx-auto text-center">
-        <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">پروفایل من</h1>
-        <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-md flex flex-col items-center">
-            <div className="w-32 h-32 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center mb-4"><User className="w-20 h-20 text-blue-500 dark:text-blue-400" /></div>
-            <h2 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">{userProfile.firstName} {userProfile.lastName}</h2>
-            <p className="text-gray-500 dark:text-gray-400 mt-2">سلامتی شما آرزوی ماست</p>
+        <div class="section-content reveal">
+            <p class="headline" style="font-size: clamp(1.5rem, 3vw, 2.5rem); color: var(--color-text-secondary);">
+                ما باور نداشتیم یک کیس بتواند همزمان <span class="text-white">فوق امن</span>، <span class="text-white">بسیار سبک</span> و <span class="text-white">بی‌نهایت زیبا</span> باشد.
+                <br>
+                پس خودمان آن را ساختیم.
+            </p>
         </div>
-        <div className="mt-6 space-y-3 text-right">
-            <button onClick={() => setCurrentPage('editProfile')} className="w-full flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-right"><span className="font-semibold text-gray-800 dark:text-gray-200">اطلاعات کاربری</span><ArrowRight className="w-5 h-5 text-gray-400 transform rotate-180"/></button>
-            <a href="#" className="flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"><span className="font-semibold text-gray-800 dark:text-gray-200">گزارش مصرف دارو</span><ArrowRight className="w-5 h-5 text-gray-400 transform rotate-180"/></a>
-            <button onClick={onLogout} className="w-full flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><span className="font-semibold flex items-center"><LogOut className="w-5 h-5 ml-2"/>خروج از حساب کاربری</span><ArrowRight className="w-5 h-5 text-red-400 transform rotate-180"/></button>
-        </div>
-    </div>
-);
-
-const SettingsPage = ({ notificationEnabled, setNotificationEnabled }) => (
-    <div className="max-w-md mx-auto">
-        <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-8">تنظیمات</h1>
-        <div className="space-y-4">
-            <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-md">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center"><Bell className="w-7 h-7 text-blue-500 dark:text-blue-400 ml-3"/><span className="text-lg font-semibold text-gray-700 dark:text-gray-200">اعلان یادآوری</span></div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" checked={notificationEnabled} onChange={() => setNotificationEnabled(!notificationEnabled)} className="sr-only peer" />
-                        <div className="w-14 h-8 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-1 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                </div>
-                <p className="text-gray-500 dark:text-gray-400 mt-2 pr-10 text-sm">با فعال کردن این گزینه، زمان مصرف داروها به شما یادآوری می‌شود.</p>
-            </div>
-        </div>
-    </div>
-);
-
-const HomePage = ({ medications, userProfile, onToggleTaken, onAskAi, setModalInfo, onDeleteRequest, onEditRequest }) => {
-  const today = new Date().toLocaleDateString('fa-IR', { weekday: 'long', day: 'numeric', month: 'long' });
-  const greeting = getTimeGreeting();
-  const [isLoadingTip, setIsLoadingTip] = useState(false);
-  const medsByTime = { صبح: medications.filter(m => m.time === 'صبح'), ظهر: medications.filter(m => m.time === 'ظهر'), شب: medications.filter(m => m.time === 'شب'), };
-
-  const getHealthyTip = async () => {
-    setIsLoadingTip(true);
-    const prompt = `شما یک متخصص تغذیه مهربان برای سالمندان هستید. یک نکته غذایی بسیار ساده، سالم و کاربردی برای یک فرد سالمند به زبان فارسی بنویسید. نکته باید کوتاه و در حد یک یا دو جمله باشد.`;
-    try {
-        const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
-        const apiKey = ""; // API key should be handled securely on a backend
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-        const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        if (!response.ok) throw new Error('خطا در دریافت نکته.');
-        const result = await response.json();
-        const tip = result.candidates[0]?.content?.parts[0]?.text;
-        if (tip) setModalInfo({ title: "✨ نکته سلامتی امروز", message: tip });
-        else throw new Error('پاسخی دریافت نشد.');
-    } catch (e) {
-        setModalInfo({ title: "خطا", message: e.message });
-    } finally {
-        setIsLoadingTip(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-start">
-        <div><h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">{greeting}، {userProfile.firstName}</h1><p className="text-lg text-gray-500 dark:text-gray-400 mt-1">{today}</p></div>
-        <button onClick={getHealthyTip} disabled={isLoadingTip} className="bg-amber-400 text-white font-semibold py-2 px-3 rounded-xl shadow hover:bg-amber-500 flex items-center disabled:bg-amber-200 transition-transform transform active:scale-95">{isLoadingTip ? <LoaderCircle className="animate-spin w-5 h-5"/> : <Sparkles className="w-5 h-5"/>}<span className="mr-2 text-sm">نکته غذایی</span></button>
-      </div>
-      {Object.keys(medsByTime).map(time => (medsByTime[time].length > 0 && (<div key={time}><h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 border-b-2 border-blue-200 dark:border-blue-800 pb-2 mb-4 flex items-center"><Clock className="w-6 h-6 ml-2 text-blue-500 dark:text-blue-400" />داروهای نوبت {time}</h2><div className="space-y-3">{medsByTime[time].map(med => (<MedicationCard key={med.id} med={med} onToggleTaken={onToggleTaken} onAskAi={onAskAi} onDeleteRequest={onDeleteRequest} onEditRequest={onEditRequest} />))}</div></div>)))}
-      {medications.length === 0 && (<div className="text-center py-10 px-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm"><Pill className="mx-auto text-gray-400 w-16 h-16" /><p className="mt-4 text-lg text-gray-600 dark:text-gray-300">هنوز دارویی ثبت نکرده‌اید.</p><p className="text-sm text-gray-500 dark:text-gray-400">برای شروع، از دکمه "افزودن" در پایین صفحه استفاده کنید.</p></div>)}
-    </div>
-  );
-};
-
-const MedicationCard = ({ med, onToggleTaken, onAskAi, onDeleteRequest, onEditRequest }) => (
-  <div className={`p-3 rounded-xl shadow-md flex items-start sm:items-center gap-3 transition-all duration-300 group ${med.taken ? 'bg-green-50 dark:bg-green-900/40 border-r-4 border-green-500' : 'bg-white dark:bg-gray-800 border-r-4 border-red-500'}`}>
+    </section>
     
-    <div className="flex-grow flex items-center gap-3" onClick={() => onToggleTaken(med.id)} style={{cursor: 'pointer'}}>
-      <div className={`w-9 h-9 flex items-center justify-center rounded-full shrink-0 ${med.taken ? 'bg-green-500' : 'bg-red-500 dark:bg-red-600'}`}>
-        <Pill size={20} className="text-white" />
-      </div>
-      <div className="flex-grow">
-        <p className="text-lg font-bold text-gray-800 dark:text-gray-100 flex items-center">{med.name}
-          <span className="text-sm font-normal text-gray-500 dark:text-gray-400 mr-2">({med.specificTime})</span>
-        </p>
-        <div className="flex items-center mt-1 gap-x-3">
-          <p className="text-gray-600 dark:text-gray-300">{med.dosage}</p>
-          {med.isRecurring && (
-            <div className="flex items-center text-xs bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-200 px-2 py-0.5 rounded-full">
-              <RefreshCw className="w-3 h-3 ml-1"/>هر {med.reminderInterval} ساعت
+    <!-- Section 3: Feature - Material -->
+    <section class="section" id="feature-section-1">
+        <div class="bg-image opacity-20" id="feature-bg-1">
+             <img src="https://images.unsplash.com/photo-1618005198919-d3d4b5a92ead?q=80&w=1974&auto=format&fit=crop" alt="[تصویر نزدیک از بافت انتزاعی و لوکس]" class="bg-image">
+        </div>
+        <div class="section-content relative z-10 grid md:grid-cols-2 items-center gap-12">
+            <div class="text-center md:text-right reveal reveal-fast">
+                 <h2 class="headline">طرح جذاب پوست ماری.</h2>
+                 <p class="body-text text-white">
+                    بدنه‌ی Ecut Case از کامپوزیت پلیمری تقویت‌شده با طرح پوست مار ساخته شده. این ساختار نه تنها ظاهری خیره‌کننده دارد، بلکه ضربه‌ها را جذب کرده و از ساز شما در برابر سخت‌ترین شرایط محافظت می‌کند.
+                </p>
             </div>
-          )}
+            <div class="reveal reveal-slow">
+                 <img src="https://uploadkon.ir/uploads/f2f510_25photo-2025-06-02-12-08-48.jpg" alt="[کیس گیتار Ecut روی شن‌های ساحل در غروب]" class="rounded-3xl glowing-image">
+            </div>
         </div>
-      </div>
-    </div>
-
-    <div className="flex flex-col sm:flex-row items-center shrink-0 -mt-1 sm:mt-0">
-      <div className="flex items-center">
-         <button onClick={(e) => { e.stopPropagation(); onAskAi(med); }} className="p-2 text-blue-600 dark:text-blue-400 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors" aria-label={`پرسش درباره ${med.name}`}><Sparkles size={20} /></button>
-         <button onClick={(e) => { e.stopPropagation(); onEditRequest(med); }} className="p-2 text-gray-600 dark:text-gray-400 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity" aria-label={`ویرایش ${med.name}`}><Pencil size={20} /></button>
-         <button onClick={(e) => { e.stopPropagation(); onDeleteRequest(med); }} className="p-2 text-red-500 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 opacity-0 group-hover:opacity-100 transition-opacity" aria-label={`حذف ${med.name}`}><Trash2 size={20} /></button>
-      </div>
-      <div className="flex flex-col items-center cursor-pointer w-12 mt-2 sm:mt-0" onClick={() => onToggleTaken(med.id)}>
-        <div className={`w-6 h-6 rounded-full flex items-center justify-center border-2 ${med.taken ? 'border-green-600 bg-green-500' : 'border-gray-400 dark:border-gray-500'}`}>
-          {med.taken && <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+    </section>
+    
+    <!-- Section 4: Feature - Security -->
+    <section class="section" id="security-section">
+        <div class="bg-image opacity-25" id="security-bg-image">
+             <img src="https://uploadkon.ir/uploads/d83510_25Gemini-Generated-Image-voyn4vvoyn4vvoyn.jpg" alt="[نمای نزدیک و هنری از قفل‌های کیس Ecut]" class="bg-image">
         </div>
-        <span className={`mt-1 text-xs font-semibold ${med.taken ? 'text-green-700 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>{med.taken ? 'مصرف شد' : 'نشده'}</span>
-      </div>
-    </div>
-  </div>
-);
-
-
-const DrugFormPage = ({ initialData = {}, onSave, onCancel, pageTitle, saveButtonText }) => {
-  const [name, setName] = useState(initialData.name || '');
-  const [dosage, setDosage] = useState(initialData.dosage || '');
-  const [time, setTime] = useState(initialData.time || 'صبح');
-  const [specificTime, setSpecificTime] = useState(initialData.specificTime || '');
-  const [isRecurring, setIsRecurring] = useState(initialData.isRecurring || false);
-  const [reminderInterval, setReminderInterval] = useState(initialData.reminderInterval || 8);
-  
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!name || !dosage || !specificTime) {
-      alert("لطفاً نام دارو، دوز مصرف و ساعت دقیق را وارد کنید.");
-      return;
-    }
-    onSave({ ...initialData, name, dosage, time, specificTime, isRecurring, reminderInterval: isRecurring ? reminderInterval : null });
-  };
-
-  return (
-    <div className="max-w-md mx-auto">
-      <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">{pageTitle}</h1>
-      <form onSubmit={handleSubmit} className="space-y-6 bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
-        <div><label htmlFor="drugName" className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">نام دارو</label><input type="text" id="drugName" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-4 text-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" placeholder="مثال: آسپرین"/></div>
-        <div><label htmlFor="dosage" className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">دوز مصرف</label><input type="text" id="dosage" value={dosage} onChange={(e) => setDosage(e.target.value)} className="w-full p-4 text-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500" placeholder="مثال: ۱ عدد"/></div>
-        <div className="grid grid-cols-2 gap-4">
-          <div><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">نوبت مصرف</label><select value={time} onChange={(e) => setTime(e.target.value)} className="w-full p-4 text-lg border-2 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500"><option value="صبح">صبح</option><option value="ظهر">ظهر</option><option value="شب">شب</option></select></div>
-          <div><label htmlFor="specificTime" className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">ساعت دقیق</label><input type="time" id="specificTime" value={specificTime} onChange={(e) => setSpecificTime(e.target.value)} className="w-full p-4 text-lg border-2 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-blue-500 focus:border-blue-500"/></div>
+        <div class="section-content reveal">
+            <h2 class="headline">قفل‌هایی که به آن‌ها اعتماد دارید.</h2>
+            <p class="body-text mt-4">
+                شش قفل فولادی با روکش کروم، بدنه‌ی کیس را به صورت یکپارچه در کنار هم نگه می‌دارند. باز و بسته شدن نرم، قفل شدن محکم. امنیت، بدون هیچ‌گونه مصالحه‌ای.
+            </p>
         </div>
-        <div className="bg-gray-100 dark:bg-gray-700/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between"><label htmlFor="recurring" className="text-lg font-medium text-gray-700 dark:text-gray-300 flex items-center"><RefreshCw className="w-5 h-5 ml-2"/>یادآوری دوره‌ای</label><label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" id="recurring" checked={isRecurring} onChange={() => setIsRecurring(!isRecurring)} className="sr-only peer" /><div className="w-14 h-8 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-1 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-blue-600"></div></label></div>
-          {isRecurring && (<div className="mt-4"><label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">هر چند ساعت؟</label><div className="grid grid-cols-3 gap-3">{[6, 8, 12].map(interval => (<button key={interval} type="button" onClick={() => setReminderInterval(interval)} className={`p-4 text-lg font-semibold rounded-xl border-2 transition-colors ${reminderInterval === interval ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'}`}>{interval} ساعت</button>))}</div></div>)}
+    </section>
+
+    <!-- Section 5: Feature - Interior -->
+    <section class="section" id="feature-section-2">
+        <div class="bg-image opacity-25" id="feature-bg-2">
+             <img src="https://uploadkon.ir/uploads/fa2e10_25Gemini-Generated-Image-qkmjt2qkmjt2qkmj.jpg" alt="[نمای داخلی مخملی و لوکس کیس گیتار با نورپردازی نارنجی]" class="bg-image">
         </div>
-        <div className="flex gap-4 pt-2">
-            <button type="button" onClick={onCancel} className="w-full bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-100 text-xl font-bold py-4 rounded-xl hover:bg-gray-300 dark:hover:bg-gray-500 transition-transform transform active:scale-95">لغو</button>
-            <button type="submit" className="w-full bg-blue-600 text-white text-xl font-bold py-4 rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-transform transform active:scale-95">{saveButtonText}</button>
+        <div class="section-content reveal">
+            <h2 class="headline">آغوشی امن برای ساز شما.</h2>
+            <p class="body-text mt-4">
+               فضای داخلی با مخمل بسیار نرم و بالشتک‌های فرم‌گرفته، گیتار شما را کاملاً در بر می‌گیرد و از هرگونه لرزش و خط و خش در حین جابجایی جلوگیری می‌کند.
+            </p>
         </div>
-      </form>
-    </div>
-  );
-};
+    </section>
+
+    <!-- Section 6: Specs -->
+    <section class="section" id="specs">
+         <div class="bg-image opacity-20" id="specs-bg-image">
+             <img src="https://uploadkon.ir/uploads/fdc810_25Gemini-Generated-Image-9dwcmd9dwcmd9dwc.jpg" alt="[نمای شماتیک و فنی از ساختار کیس گیتار]" class="bg-image">
+        </div>
+        <div class="section-content reveal">
+            <h2 class="headline">مشخصات فنی Ecut Case.</h2>
+            <div class="mt-12 grid grid-cols-2 md:grid-cols-3 gap-8 text-center">
+                <div class="bg-[var(--color-card-bg)] bg-opacity-50 backdrop-blur-sm border border-orange-500/20 p-6 rounded-2xl">
+                    <h3 class="text-xl md:text-2xl font-bold">جنس بدنه</h3>
+                    <p class="text-gray-400 mt-2">کامپوزیت پلیمری</p>
+                </div>
+                <div class="bg-[var(--color-card-bg)] bg-opacity-50 backdrop-blur-sm border border-orange-500/20 p-6 rounded-2xl">
+                    <h3 class="text-xl md:text-2xl font-bold">پوشش داخلی</h3>
+                    <p class="text-gray-400 mt-2">مخمل ضدخش</p>
+                </div>
+                <div class="bg-[var(--color-card-bg)] bg-opacity-50 backdrop-blur-sm border border-orange-500/20 p-6 rounded-2xl">
+                    <h3 class="text-xl md:text-2xl font-bold">تعداد قفل</h3>
+                    <p class="text-gray-400 mt-2">۶ عدد فولادی</p>
+                </div>
+                 <div class="bg-[var(--color-card-bg)] bg-opacity-50 backdrop-blur-sm border border-orange-500/20 p-6 rounded-2xl">
+                    <h3 class="text-xl md:text-2xl font-bold">وزن</h3>
+                    <p class="text-gray-400 mt-2">۴.۲ کیلوگرم</p>
+                </div>
+                 <div class="bg-[var(--color-card-bg)] bg-opacity-50 backdrop-blur-sm border border-orange-500/20 p-6 rounded-2xl">
+                    <h3 class="text-xl md:text-2xl font-bold">ابعاد خارجی</h3>
+                    <p class="text-gray-400 mt-2">۱۰۵x۴۰x۱۵ سانتی‌متر</p>
+                </div>
+                 <div class="bg-[var(--color-card-bg)] bg-opacity-50 backdrop-blur-sm border border-orange-500/20 p-6 rounded-2xl">
+                    <h3 class="text-xl md:text-2xl font-bold">رنگ‌بندی</h3>
+                    <p class="text-gray-400 mt-2">آبی اقیانوسی</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 7: Purchase -->
+    <section class="section" id="purchase">
+        <div class="section-content reveal">
+            <h2 class="headline">زمان ارتقاست.</h2>
+            <p class="sub-headline mt-4">Ecut Case را همین امروز سفارش دهید.</p>
+            <p class="text-5xl font-bold my-8" style="color: var(--color-accent);">۱۱,۵۰۰,۰۰۰ تومان</p>
+            <a href="#" class="cta-button">افزودن به سبد خرید</a>
+        </div>
+    </section>
 
 
-const BottomNavBar = ({ currentPage, setCurrentPage }) => {
-  const navItems = [{ id: 'home', icon: Pill, label: 'داروها' }, { id: 'add', icon: Plus, label: 'افزودن' }, { id: 'profile', icon: User, label: 'پروفایل' }, { id: 'settings', icon: Settings, label: 'تنظیمات' }];
-  return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 shadow-lg"><div className="flex justify-around max-w-lg mx-auto">{navItems.map(item => (<button key={item.id} onClick={() => setCurrentPage(item.id)} className={`flex flex-col items-center justify-center w-full py-3 text-sm transition-colors duration-200 ${currentPage === item.id ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400'}`}><item.icon className="w-7 h-7 mb-1" /><span>{item.label}</span></button>))}</div></nav>
-  );
-};
+    <script>
+        // --- Animated Background ---
+        const canvas = document.getElementById('animated-bg');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
 
-// --- Function to determine the initial theme ---
-const getInitialTheme = () => {
-  if (typeof window !== 'undefined') {
-    // 1. Check for a saved theme in localStorage
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme) {
-      return savedTheme;
-    }
-    // 2. Check for the user's OS preference
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
-  }
-  // 3. Default to light theme
-  return 'light';
-};
+        let particles = [];
+        const particleCount = 50;
 
+        class Particle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 2 + 1;
+                this.speedX = Math.random() * 1 - 0.5;
+                this.speedY = Math.random() * 1 - 0.5;
+                this.color = `rgba(255, 87, 34, ${Math.random() * 0.5})`;
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
 
-// --- MAIN APP COMPONENT ---
-export default function App() {
-  const [currentPage, setCurrentPage] = useState('home');
-  const [medications, setMedications] = useState([]);
-  const [userProfile, setUserProfile] = useState(null);
-  const [isRegistered, setIsRegistered] = useState(false);
-  const [notificationEnabled, setNotificationEnabled] = useState(true);
-  const [modalInfo, setModalInfo] = useState(null);
-  const [askAiModalMed, setAskAiModalMed] = useState(null);
-  const [confirmDelete, setConfirmDelete] = useState(null);
-  const [editingMedication, setEditingMedication] = useState(null);
-  const [alarmModalMed, setAlarmModalMed] = useState(null);
-  const [confirmLogout, setConfirmLogout] = useState(false);
-  const [theme, setTheme] = useState(getInitialTheme);
-  const triggeredAlarms = useRef(new Set());
-
-  // --- THEME MANAGEMENT ---
-  // Apply theme class to the root element. It runs once on load based on system preference.
-  useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    // Persist the initial theme to localStorage so it's remembered,
-    // even though there's no UI to change it anymore.
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-
-  // Load data from localStorage on initial render
-  useEffect(() => {
-    try {
-      const savedMeds = localStorage.getItem('medications');
-      if (savedMeds) {
-        setMedications(JSON.parse(savedMeds));
-      } else {
-        setMedications(initialMedications); // Load mock data if nothing is saved
-      }
-
-      let savedProfile = localStorage.getItem('userProfile');
-      if (!savedProfile) {
-        savedProfile = sessionStorage.getItem('userProfile');
-      }
-      if (savedProfile) {
-        setUserProfile(JSON.parse(savedProfile));
-        setIsRegistered(true);
-      }
-    } catch (error) {
-      console.error("Could not read from storage", error);
-      setIsRegistered(false);
-      setMedications(initialMedications);
-    }
-  }, []);
-
-  // Save medications to localStorage whenever they change
-  useEffect(() => {
-    try {
-        if(medications && medications.length > 0) {
-            localStorage.setItem('medications', JSON.stringify(medications));
-        } else if (medications && medications.length === 0) {
-             // If user deletes all meds, remove the item
-             localStorage.removeItem('medications');
+                if (this.size > 0.2) this.size -= 0.01;
+                if (this.size <= 0.2) {
+                    this.x = Math.random() * canvas.width;
+                    this.y = Math.random() * canvas.height;
+                    this.size = Math.random() * 2 + 1;
+                    this.speedX = Math.random() * 1 - 0.5;
+                    this.speedY = Math.random() * 1 - 0.5;
+                }
+            }
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
-    } catch (error) {
-        console.error("Could not save medications to storage", error);
-    }
-  }, [medications]);
 
+        function initParticles() {
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
 
-  const handleRegistration = (profileData, rememberMe) => {
-    const storage = rememberMe ? localStorage : sessionStorage;
-    storage.setItem('userProfile', JSON.stringify(profileData));
-    setUserProfile(profileData);
-    setIsRegistered(true);
-    setModalInfo({ title: "خوش آمدید!", message: `ثبت‌نام شما با موفقیت انجام شد، ${profileData.firstName}.` });
-  };
-  
-  const handleProfileUpdate = (profileData) => {
-    let storageUsed = localStorage.getItem('userProfile') ? localStorage : sessionStorage;
-    storageUsed.setItem('userProfile', JSON.stringify(profileData));
-    setUserProfile(profileData);
-    setCurrentPage('profile');
-    setModalInfo({ title: "موفقیت", message: "اطلاعات شما با موفقیت به‌روزرسانی شد." });
-  };
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < particles.length; i++) {
+                particles[i].update();
+                particles[i].draw();
+            }
+            requestAnimationFrame(animateParticles);
+        }
 
-  const handleLogout = () => {
-    localStorage.removeItem('userProfile');
-    sessionStorage.removeItem('userProfile');
-    // Optional: Also clear medications on logout if they are user-specific
-    // localStorage.removeItem('medications'); 
-    setUserProfile(null);
-    setIsRegistered(false);
-    setConfirmLogout(false);
-  };
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            particles = [];
+            initParticles();
+        });
+        
+        initParticles();
+        animateParticles();
 
-  // --- MEDICATION CRUD ---
-  const addMedication = (med) => {
-    const newMed = { ...med, id: Date.now(), taken: false };
-    setMedications(prevMeds => [...prevMeds, newMed].sort((a,b) => (a.specificTime || "00:00").localeCompare(b.specificTime || "00:00")));
-    setCurrentPage('home');
-  };
-  
-  const updateMedication = (updatedMed) => {
-    setMedications(meds => meds.map(med => (med.id === updatedMed.id ? updatedMed : med)).sort((a,b) => (a.specificTime || "00:00").localeCompare(b.specificTime || "00:00")));
-    setEditingMedication(null);
-    setCurrentPage('home');
-    setModalInfo({ title: "موفقیت", message: `داروی ${updatedMed.name} با موفقیت ویرایش شد.` });
-  };
+        // --- Intersection Observer for animations ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                    }
+                });
+            }, {
+                threshold: 0.2
+            });
 
-  const handleEditRequest = (med) => {
-    setEditingMedication(med);
-    setCurrentPage('editMedication');
-  };
-
-  const deleteMedication = (id) => { 
-      setMedications(meds => meds.filter(med => med.id !== id)); 
-      setConfirmDelete(null); 
-      setModalInfo({ title: "انجام شد", message: "دارو با موفقیت حذف شد."}); 
-  };
-  
-  const toggleMedicationTaken = (id) => { setMedications(meds => meds.map(med => (med.id === id ? { ...med, taken: !med.taken } : med))); };
-  
-  const snoozeMedication = (id) => {
-      triggeredAlarms.current.delete(id);
-      setMedications(meds => meds.map(med => {
-          if (med.id === id) {
-              const now = new Date();
-              now.setMinutes(now.getMinutes() + 5);
-              const newTime = now.toTimeString().slice(0,5);
-              return { ...med, specificTime: newTime };
-          }
-          return med;
-      }));
-  };
-
-  // --- ALARM LOGIC ---
-  useEffect(() => {
-    if (!notificationEnabled) return;
-    const checkTime = () => {
-      const now = new Date(); const currentTime = now.toTimeString().slice(0, 5);
-      const upcomingMed = medications.find(med => !med.taken && med.specificTime === currentTime && !triggeredAlarms.current.has(med.id));
-      if (upcomingMed) { setAlarmModalMed(upcomingMed); triggeredAlarms.current.add(upcomingMed.id); }
-
-      // Reset alarms and taken status at midnight
-      if (now.getHours() === 0 && now.getMinutes() === 0) {
-        triggeredAlarms.current.clear();
-        setMedications(meds => meds.map(m => ({...m, taken: false})));
-      }
-    };
-    const interval = setInterval(checkTime, 30000); // Check every 30 seconds
-    return () => clearInterval(interval);
-  }, [medications, notificationEnabled]);
-
-  const mainAppClasses = "font-sans bg-gray-100 dark:bg-gray-900 min-h-screen";
-
-  if (!isRegistered) {
-      return (
-        <div dir="rtl" className={mainAppClasses}>
-            {modalInfo && <InfoModal title={modalInfo.title} message={modalInfo.message} onClose={() => setModalInfo(null)} />}
-            <RegistrationPage onRegister={handleRegistration} setModalInfo={setModalInfo} />
-        </div>
-      )
-  }
-
-  const RenderPage = () => {
-    switch (currentPage) {
-      case 'add': 
-        return <DrugFormPage 
-            onSave={(med) => { addMedication(med); setModalInfo({ title: "موفقیت", message: `داروی ${med.name} با موفقیت اضافه شد.` }); }}
-            onCancel={() => { setCurrentPage('home'); setEditingMedication(null); }}
-            pageTitle="ثبت داروی جدید"
-            saveButtonText="ذخیره دارو"
-        />;
-      case 'editMedication':
-        return <DrugFormPage 
-            initialData={editingMedication}
-            onSave={updateMedication}
-            onCancel={() => { setCurrentPage('home'); setEditingMedication(null); }}
-            pageTitle="ویرایش دارو"
-            saveButtonText="ذخیره تغییرات"
-        />;
-      case 'profile': return <ProfilePage userProfile={userProfile} setCurrentPage={setCurrentPage} onLogout={() => setConfirmLogout(true)} />;
-      case 'editProfile': return <EditProfilePage userProfile={userProfile} onSave={handleProfileUpdate} onCancel={() => setCurrentPage('profile')} setModalInfo={setModalInfo} />;
-      case 'settings': return <SettingsPage notificationEnabled={notificationEnabled} setNotificationEnabled={setNotificationEnabled} />;
-      default: return <HomePage medications={medications} userProfile={userProfile} onToggleTaken={toggleMedicationTaken} onAskAi={setAskAiModalMed} setModalInfo={setModalInfo} onDeleteRequest={setConfirmDelete} onEditRequest={handleEditRequest} />;
-    }
-  };
-
-  return (
-    <div dir="rtl" className={`${mainAppClasses} flex flex-col`}>
-      {modalInfo && <InfoModal title={modalInfo.title} message={modalInfo.message} onClose={() => setModalInfo(null)} />}
-      {askAiModalMed && <AskAiModal medication={askAiModalMed} onClose={() => setAskAiModalMed(null)} />}
-      {confirmDelete && <ConfirmationModal title="تایید حذف" message={`آیا از حذف داروی "${confirmDelete.name}" مطمئن هستید؟`} onConfirm={() => deleteMedication(confirmDelete.id)} onCancel={() => setConfirmDelete(null)} />}
-      {confirmLogout && <ConfirmationModal title="خروج از حساب" message="آیا برای خروج از حساب کاربری خود مطمئن هستید؟" onConfirm={handleLogout} onCancel={() => setConfirmLogout(false)} confirmText="خروج"/>}
-      {alarmModalMed && <AlarmModal medication={alarmModalMed} onClose={() => setAlarmModalMed(null)} onTake={toggleMedicationTaken} onSnooze={snoozeMedication} />}
-      <div className="flex-grow p-4 pb-24"><RenderPage /></div>
-      <BottomNavBar currentPage={currentPage} setCurrentPage={setCurrentPage} />
-    </div>
-  );
-}
+            const revealElements = document.querySelectorAll('.reveal');
+            revealElements.forEach(el => observer.observe(el));
+            
+            // --- Parallax & Scroll Effects ---
+            const heroBg = document.getElementById('hero-bg-image');
+            const introBg = document.getElementById('intro-bg-image');
+            const featureBg1 = document.getElementById('feature-bg-1');
+            const securityBg = document.getElementById('security-bg-image');
+            const featureBg2 = document.getElementById('feature-bg-2');
+            const specsBg = document.getElementById('specs-bg-image');
+            
+            window.addEventListener('scroll', () => {
+                const scrollY = window.scrollY;
+                // General Parallax
+                if(heroBg) heroBg.style.transform = `translateY(${scrollY * 0.3}px) scale(1.1)`;
+                if(introBg) introBg.style.transform = `translateY(${ (scrollY - introBg.parentElement.offsetTop) * 0.2}px) scale(1.1)`;
+                if(featureBg1) featureBg1.style.transform = `translateY(${ (scrollY - featureBg1.parentElement.offsetTop) * 0.2}px) scale(1.1)`;
+                if(securityBg) securityBg.style.transform = `translateY(${ (scrollY - securityBg.parentElement.offsetTop) * 0.2}px) scale(1.1)`;
+                if(featureBg2) featureBg2.style.transform = `translateY(${ (scrollY - featureBg2.parentElement.offsetTop) * 0.2}px) scale(1.1)`;
+                if(specsBg) specsBg.style.transform = `translateY(${ (scrollY - specsBg.parentElement.offsetTop) * 0.2}px) scale(1.1)`;
+            });
+        });
+    </script>
+</body>
+</html>
